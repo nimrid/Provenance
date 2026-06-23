@@ -1,0 +1,6 @@
+item_serial = "12345"
+old_secret_nonce = "88888"
+new_secret_nonce = "99999"
+old_commitment = "0x23a28c7692e95f63b04c6838df139611ce9eba8cd94ff03a9f758cda7932412b"
+new_commitment = "0x0eb1bad259f5374eda2fdeff5174f87712c49e5a441a89a00c118fa870f204ab"
+nullifier = "0x1437f97315fa7d0704012c7bce12a9a00b7839b7ec61a106c0f4498b030407e5"
