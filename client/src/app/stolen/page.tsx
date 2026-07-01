@@ -3,17 +3,17 @@
 import { useState } from 'react';
 import NFCScanner from '@/components/NFCScanner';
 
-export default function TransferPage() {
+export default function ReportStolenPage() {
   const [serialNumber, setSerialNumber] = useState('');
-  const [oldSecret, setOldSecret] = useState('');
+  const [secret, setSecret] = useState('');
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ newSecret: string, oldCommitment: string, newCommitment: string, nullifier: string, proof: string } | null>(null);
+  const [result, setResult] = useState<{ commitment: string, proof: string } | null>(null);
   const [error, setError] = useState('');
   const [onChain, setOnChain] = useState(false);
   const [txStatus, setTxStatus] = useState('');
   const [txHash, setTxHash] = useState('');
 
-  const handleTransfer = async (e: React.FormEvent) => {
+  const handleReport = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
@@ -21,19 +21,16 @@ export default function TransferPage() {
     setOnChain(false);
 
     try {
-      // Simulate generating a new secret for the new owner
-      const newSecret = Math.floor(Math.random() * 1000000).toString();
-
-      const res = await fetch('/api/prove/transfer', {
+      const res = await fetch('/api/prove/stolen', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serialNumber, oldSecret, newSecret }),
+        body: JSON.stringify({ serialNumber, secret }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.details || data.error);
 
-      setResult({ ...data, newSecret });
+      setResult(data);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -53,12 +50,10 @@ export default function TransferPage() {
       const publicKey = await connectWallet();
       const contract = new Contract(CONTRACT_ID);
       
-      // process_transfer(old_commitment: BytesN<32>, new_commitment: BytesN<32>, nullifier: BytesN<32>, proof: Bytes)
+      // report_stolen(commitment: BytesN<32>, proof: Bytes)
       const contractCallOp = contract.call(
-        'process_transfer',
-        hexToBytesN32(result!.oldCommitment),
-        hexToBytesN32(result!.newCommitment),
-        hexToBytesN32(result!.nullifier),
+        'report_stolen',
+        hexToBytesN32(result!.commitment),
         proofToBytes(result!.proof)
       );
       
@@ -79,12 +74,12 @@ export default function TransferPage() {
 
   return (
     <>
-    <div className="page-bg" style={{ backgroundImage: 'url(/luxury_watch.jpg)' }}></div>
+    <div className="page-bg" style={{ backgroundImage: 'url(/luxury_watch.jpg)', filter: 'brightness(0.25) contrast(1.1) grayscale(0.8)' }}></div>
     <div style={{ maxWidth: '600px', margin: '2rem auto', padding: '0 1rem', position: 'relative', zIndex: 1 }}>
-      <h1 className="title">Transfer Ownership</h1>
-      <p className="subtitle">Execute a zero-knowledge transfer. Prove you own the current secret and generate a new commitment for the buyer without revealing the item's identity.</p>
+      <h1 className="title" style={{ color: 'red' }}>Report Stolen Item</h1>
+      <p className="subtitle">If your luxury item has been stolen, use your private secret to flag it on the blockchain. This will permanently prevent any future transfers of the item.</p>
 
-      <form onSubmit={handleTransfer} className="card">
+      <form onSubmit={handleReport} className="card">
         <div className="input-group">
           <label className="input-label">Hardware Serial Number</label>
           <input 
@@ -104,16 +99,16 @@ export default function TransferPage() {
             type="text" 
             className="input-field" 
             placeholder="Enter your private nonce" 
-            value={oldSecret} 
-            onChange={e => setOldSecret(e.target.value)}
+            value={secret} 
+            onChange={e => setSecret(e.target.value)}
             required
             disabled={loading || !!result}
           />
         </div>
         
         {!result && (
-          <button type="submit" className="btn" disabled={loading || !serialNumber || !oldSecret}>
-            {loading ? <><span className="loader"></span> Proving Transfer...</> : 'Initiate Transfer'}
+          <button type="submit" className="btn" style={{ background: '#d32f2f' }} disabled={loading || !serialNumber || !secret}>
+            {loading ? <><span className="loader"></span> Generating Proof...</> : 'Generate Report Stolen Proof'}
           </button>
         )}
       </form>
@@ -126,28 +121,17 @@ export default function TransferPage() {
 
       {result && (
         <div className="data-display">
-          <div className="badge">Proof Generated</div>
+          <div className="badge" style={{ background: 'rgba(211,47,47,0.1)', color: '#d32f2f' }}>Zero-Knowledge Proof Ready</div>
           
           <div className="data-row">
-            <span className="data-label">New Secret Nonce (For Buyer)</span>
-            <span className="data-value" style={{ color: 'var(--success)' }}>{result.newSecret}</span>
-          </div>
-
-          <div style={{ borderTop: '1px solid var(--border)', margin: '1rem 0' }}></div>
-
-          <div className="data-row">
-            <span className="data-label">Public Nullifier (Spends Old Hash)</span>
-            <span className="data-value">{result.nullifier}</span>
-          </div>
-          <div className="data-row">
-            <span className="data-label">New Public Commitment</span>
-            <span className="data-value">{result.newCommitment}</span>
+            <span className="data-label">Public Commitment (Item Identity)</span>
+            <span className="data-value">{result.commitment}</span>
           </div>
           
           <div className="data-row" style={{ marginTop: '1.5rem' }}>
-            <button onClick={handleRegister} className="btn" disabled={loading || onChain} style={{ width: '100%' }}>
-              {loading ? <><span className="loader"></span> {txStatus || 'Registering Transfer on Soroban...'}</> : 
-               onChain ? 'Transferred Successfully ✓' : 'Register Transfer on Stellar'}
+            <button onClick={handleRegister} className="btn" style={{ width: '100%', background: onChain ? 'var(--success)' : '#d32f2f' }} disabled={loading || onChain}>
+              {loading ? <><span className="loader"></span> {txStatus || 'Submitting to Soroban...'}</> : 
+               onChain ? 'Flagged as Stolen ✓' : 'Submit Stolen Report to Stellar'}
             </button>
             {onChain && txHash && (
               <div style={{ textAlign: 'center', marginTop: '1rem' }}>

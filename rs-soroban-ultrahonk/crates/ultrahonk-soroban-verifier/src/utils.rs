@@ -166,8 +166,13 @@ pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Result<VerificationKey, V
     const HEADER_WORDS: usize = 4;
     const NUM_POINTS: usize = 27;
     const POINT_BLOB_LEN: usize = NUM_POINTS * 64;
-    const EXPECTED_LEN: usize = HEADER_WORDS * 8 + POINT_BLOB_LEN;
-    if bytes.len() as usize != EXPECTED_LEN {
+    
+    // The new bb write_vk (Noir 1.0) adds a u32 before the points (e.g. contains_recursive_proof).
+    const EXPECTED_LEN_OLD: usize = HEADER_WORDS * 8 + POINT_BLOB_LEN; // 1760
+    const EXPECTED_LEN_NEW: usize = HEADER_WORDS * 8 + 4 + POINT_BLOB_LEN; // 1764
+    
+    let is_new_format = bytes.len() as usize == EXPECTED_LEN_NEW;
+    if bytes.len() as usize != EXPECTED_LEN_OLD && !is_new_format {
         return Err(VkLoadError::WrongLength);
     }
 
@@ -180,6 +185,11 @@ pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Result<VerificationKey, V
     let log_circuit_size = read_u64(bytes, &mut idx);
     let public_inputs_size = read_u64(bytes, &mut idx);
     let pub_inputs_offset = read_u64(bytes, &mut idx);
+
+    // Skip the extra u32 if new format
+    if is_new_format {
+        let _contains_recursive_proof = read_bytes::<4>(bytes, &mut idx);
+    }
 
     // Validate structural parameters immediately after parsing.
     if log_circuit_size == 0
@@ -207,7 +217,8 @@ pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Result<VerificationKey, V
             .expect("vk point chunk");
         G1Point::from_bytes(env, chunk)
     });
-    debug_assert_eq!(idx as usize, EXPECTED_LEN);
+    let expected_len = if is_new_format { EXPECTED_LEN_NEW } else { EXPECTED_LEN_OLD };
+    debug_assert_eq!(idx as usize, expected_len);
 
     Ok(VerificationKey {
         circuit_size,

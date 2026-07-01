@@ -1,0 +1,140 @@
+--- src/lib.rs
++++ src/lib.rs
+@@ -18,20 +18,23 @@
+     UnknownCommitment = 7,
+     NullifierAlreadySpent = 8,
+     CommitmentAlreadyExists = 9,
++    ItemStolen = 10,
+ }
+ 
+ #[contracttype]
+ pub enum DataKey {
+     VkGenesis,
+     VkTransfer,
++    VkStolen,
+     Commitment(BytesN<32>),
+     Nullifier(BytesN<32>),
++    Stolen(BytesN<32>),
+ }
+ 
+ #[contractimpl]
+ impl ProvenanceContract {
+-    /// Initialize the contract with two immutable Verification Keys.
+-    pub fn init(env: Env, vk_genesis: Bytes, vk_transfer: Bytes) -> Result<(), Error> {
++    /// Initialize the contract with three immutable Verification Keys.
++    pub fn init(env: Env, vk_genesis: Bytes, vk_transfer: Bytes, vk_stolen: Bytes) -> Result<(), Error> {
+         if env.storage().instance().has(&DataKey::VkGenesis) {
+             return Err(Error::AlreadyInitialized);
+         }
+@@ -48,9 +51,16 @@
+             VkLoadError::InvalidParameters => Error::VkInvalidParameters,
+         })?;
+         
++        // Validate vk_stolen
++        let _ = UltraHonkVerifier::new(&env, &vk_stolen).map_err(|e| match e {
++            VkLoadError::WrongLength => Error::VkInvalidLength,
++            VkLoadError::InvalidParameters => Error::VkInvalidParameters,
++        })?;
++        
+         // TRULY IMMUTABLE: no setter function exists after constructor.
+         env.storage().instance().set(&DataKey::VkGenesis, &vk_genesis);
+         env.storage().instance().set(&DataKey::VkTransfer, &vk_transfer);
++        env.storage().instance().set(&DataKey::VkStolen, &vk_stolen);
+         
+         Ok(())
+     }
+@@ -64,6 +74,10 @@
+         env.storage().instance().get(&DataKey::VkTransfer).ok_or(Error::VkNotSet)
+     }
+ 
++    pub fn vk_stolen(env: Env) -> Result<Bytes, Error> {
++        env.storage().instance().get(&DataKey::VkStolen).ok_or(Error::VkNotSet)
++    }
++
+     /// Register a new genesis item into the provenance tree
+     pub fn register_genesis(env: Env, genesis_commitment: BytesN<32>, proof: Bytes) -> Result<(), Error> {
+         if proof.len() as usize != PROOF_BYTES {
+@@ -73,9 +87,9 @@
+         }
+ 
+         let vk_bytes: Bytes = env.storage().instance().get(&DataKey::VkGenesis).ok_or(Error::VkNotSet)?;
+-        let verifier = UltraHonkVerifier::new(&env, &vk_bytes).unwrap();
++        let verifier = UltraHonkVerifier::new(&env, &vk_bytes).map_err(|_| Error::VerificationFailed)?;
+         
+         let public_inputs = Bytes::from_array(&env, &genesis_commitment.to_array());
+         
+-        verifier.verify(&env, &proof, &public_inputs).map_err(|_| Error::VerificationFailed)?;
++        verifier.verify(&env, &proof, &public_inputs).map_err(|_| Error::VerificationFailed)?;
+         
+         let key = DataKey::Commitment(genesis_commitment.clone());
+         if env.storage().persistent().has(&key) {
+@@ -103,6 +117,10 @@
+             return Err(Error::UnknownCommitment);
+         }
+ 
++        if env.storage().persistent().has(&DataKey::Stolen(old_commitment.clone())) {
++            return Err(Error::ItemStolen);
++        }
++
+         let key_nullifier = DataKey::Nullifier(nullifier.clone());
+         if env.storage().persistent().has(&key_nullifier) {
+             return Err(Error::NullifierAlreadySpent);
+@@ -111,12 +129,12 @@
+         // Verify Transfer Proof
+ 
+         let vk_bytes: Bytes = env.storage().instance().get(&DataKey::VkTransfer).ok_or(Error::VkNotSet)?;
+-        let verifier = UltraHonkVerifier::new(&env, &vk_bytes).unwrap();
++        let verifier = UltraHonkVerifier::new(&env, &vk_bytes).map_err(|_| Error::VerificationFailed)?;
+ 
+         let mut public_inputs = Bytes::from_array(&env, &old_commitment.to_array());
+         public_inputs.append(&Bytes::from_array(&env, &new_commitment.to_array()));
+         public_inputs.append(&Bytes::from_array(&env, &nullifier.to_array()));
+ 
+-        verifier.verify(&env, &proof, &public_inputs).map_err(|_| Error::VerificationFailed)?;
++        verifier.verify(&env, &proof, &public_inputs).map_err(|_| Error::VerificationFailed)?;
+ 
+         // Update state
+         env.storage().persistent().set(&key_nullifier, &true);
+@@ -125,6 +143,33 @@
+ 
+         Ok(())
+     }
++
++    /// Report an item as stolen, preventing any future transfers.
++    pub fn report_stolen(env: Env, commitment: BytesN<32>, proof: Bytes) -> Result<(), Error> {
++        if proof.len() as usize != PROOF_BYTES {
++            return Err(Error::ProofParseError);
++        }
++
++        let key = DataKey::Commitment(commitment.clone());
++        if !env.storage().persistent().has(&key) {
++            return Err(Error::UnknownCommitment);
++        }
++
++        if env.storage().persistent().has(&DataKey::Stolen(commitment.clone())) {
++            return Ok(()); // Already flagged
++        }
++
++        let vk_bytes: Bytes = env.storage().instance().get(&DataKey::VkStolen).ok_or(Error::VkNotSet)?;
++        let verifier = UltraHonkVerifier::new(&env, &vk_bytes).map_err(|_| Error::VerificationFailed)?;
++
++        let public_inputs = Bytes::from_array(&env, &commitment.to_array());
++
++        verifier.verify(&env, &proof, &public_inputs).map_err(|_| Error::VerificationFailed)?;
++
++        env.storage().persistent().set(&DataKey::Stolen(commitment), &true);
++
++        Ok(())
++    }
+     
+     pub fn is_commitment_valid(env: Env, commitment: BytesN<32>) -> bool {
+         env.storage().persistent().has(&DataKey::Commitment(commitment))
+@@ -133,6 +178,10 @@
+     pub fn is_nullifier_spent(env: Env, nullifier: BytesN<32>) -> bool {
+         env.storage().persistent().has(&DataKey::Nullifier(nullifier))
+     }
++
++    pub fn is_item_stolen(env: Env, commitment: BytesN<32>) -> bool {
++        env.storage().persistent().has(&DataKey::Stolen(commitment))
++    }
+ }

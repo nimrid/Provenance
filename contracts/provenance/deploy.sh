@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-NETWORK="local_testnet"
+NETWORK="proxy-testnet"
 ACCOUNT="alice" # Make sure this account is set up and funded in stellar cli
 
 # Ensure we are in the correct directory
@@ -23,14 +23,16 @@ echo "Reading verification keys..."
 # The tests show paths as ../../circuits/genesis/target/vk
 VK_GENESIS_PATH="../../circuits/genesis/target/vk"
 VK_TRANSFER_PATH="../../circuits/transfer/target/vk"
+VK_STOLEN_PATH="../../circuits/report_stolen/target/vk"
 
-if [ ! -f "$VK_GENESIS_PATH" ] || [ ! -f "$VK_TRANSFER_PATH" ]; then
+if [ ! -f "$VK_GENESIS_PATH" ] || [ ! -f "$VK_TRANSFER_PATH" ] || [ ! -f "$VK_STOLEN_PATH" ]; then
     echo "Verification keys not found. Ensure circuits are compiled."
     exit 1
 fi
 
 HEX_VK_GENESIS=$(xxd -p -c 100000 "$VK_GENESIS_PATH" | tr -d '\n')
 HEX_VK_TRANSFER=$(xxd -p -c 100000 "$VK_TRANSFER_PATH" | tr -d '\n')
+HEX_VK_STOLEN=$(xxd -p -c 100000 "$VK_STOLEN_PATH" | tr -d '\n')
 
 echo "Initializing contract..."
 stellar contract invoke \
@@ -40,7 +42,8 @@ stellar contract invoke \
   -- \
   init \
   --vk_genesis "$HEX_VK_GENESIS" \
-  --vk_transfer "$HEX_VK_TRANSFER"
+  --vk_transfer "$HEX_VK_TRANSFER" \
+  --vk_stolen "$HEX_VK_STOLEN"
 
 echo "Contract initialized successfully."
 

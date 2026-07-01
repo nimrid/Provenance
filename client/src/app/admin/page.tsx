@@ -1,14 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import NFCScanner from '@/components/NFCScanner';
 
 export default function AdminPage() {
-  const [serialNumber, setSerialNumber] = useState('12345');
+  const [serialNumber, setSerialNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ commitment: string, proof: string } | null>(null);
   const [error, setError] = useState('');
   const [onChain, setOnChain] = useState(false);
   const [txStatus, setTxStatus] = useState('');
+  const [txHash, setTxHash] = useState('');
 
   const handleMint = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,14 +20,11 @@ export default function AdminPage() {
     setOnChain(false);
 
     try {
-      // Hardcoded dummy authenticator signature and secret for the demo
       const secret = Math.floor(Math.random() * 1000000).toString();
-      const authenticatorSignature = [96, 216, 32, 173, 28, 122, 207, 54, 211, 159, 167, 139, 251, 47, 130, 230, 85, 190, 80, 60, 176, 9, 113, 21, 16, 125, 96, 106, 27, 219, 248, 151, 34, 175, 83, 121, 128, 242, 136, 246, 94, 165, 11, 224, 229, 218, 3, 167, 241, 216, 147, 254, 240, 209, 71, 162, 188, 224, 90, 75, 56, 181, 127, 237];
-
       const res = await fetch('/api/prove/genesis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ serialNumber, secret, authenticatorSignature }),
+        body: JSON.stringify({ serialNumber, secret }),
       });
 
       const data = await res.json();
@@ -58,9 +57,10 @@ export default function AdminPage() {
         proofToBytes(result!.proof)
       );
       
-      await signAndSubmitTransaction(contractCallOp, publicKey);
+      const txResult = await signAndSubmitTransaction(contractCallOp, publicKey);
       
       setTxStatus('');
+      setTxHash(txResult.hash);
       setOnChain(true);
     } catch (err: any) {
       console.error(err);
@@ -73,7 +73,9 @@ export default function AdminPage() {
   };
 
   return (
-    <div style={{ maxWidth: '600px', margin: '2rem auto' }}>
+    <>
+    <div className="page-bg" style={{ backgroundImage: 'url(/luxury_handbag.jpg)' }}></div>
+    <div style={{ maxWidth: '600px', margin: '2rem auto', padding: '0 1rem', position: 'relative', zIndex: 1 }}>
       <h1 className="title">Manufacturer Dashboard</h1>
       <p className="subtitle">Mint a zero-knowledge genesis commitment for a physical item. Enter the hardware serial number below to generate the cryptographic proof.</p>
 
@@ -83,12 +85,13 @@ export default function AdminPage() {
           <input 
             type="text" 
             className="input-field" 
-            placeholder="e.g. 123456789" 
+            placeholder="e.g. H-2024-BXY-9901" 
             value={serialNumber} 
             onChange={e => setSerialNumber(e.target.value)}
             required
             disabled={loading || !!result}
           />
+          <NFCScanner onScan={(serial) => setSerialNumber(serial)} />
         </div>
         
         {!result && (
@@ -120,9 +123,17 @@ export default function AdminPage() {
               {loading ? <><span className="loader"></span> {txStatus || 'Registering on Soroban...'}</> : 
                onChain ? 'Registered Successfully ✓' : 'Register on Stellar'}
             </button>
+            {onChain && txHash && (
+              <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+                <a href={`https://stellar.expert/explorer/testnet/tx/${txHash}`} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', textDecoration: 'none' }}>
+                  View Transaction on Stellar Expert ↗
+                </a>
+              </div>
+            )}
           </div>
         </div>
       )}
     </div>
+    </>
   );
 }

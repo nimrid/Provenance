@@ -1,4 +1,5 @@
 use dep::poseidon::poseidon2::Poseidon2;
+use dep::keccak256::keccak256;
 use std::ecdsa_secp256k1;
 
 fn hash2(a: Field, b: Field) -> Field {
@@ -12,25 +13,24 @@ fn main(
 ) -> pub Field {
     // Hardcode the trusted authenticator's public key
     let authenticator_pubkey_x: [u8; 32] = [
-        29, 150,  64,  61, 173, 148, 230,  35,
-        234, 152,   4, 250,  29, 232, 249, 207,
-        111, 234,  15,  87, 242, 210, 148,  29,
-        100,  13, 113,  65,   6,  22,  63,  96
+        206, 106, 24, 26, 159, 167, 228, 218, 
+        18, 116, 96, 178, 255, 32, 67, 253, 
+        151, 204, 252, 150, 89, 95, 191, 127, 
+        95, 178, 178, 154, 18, 229, 203, 87
     ];
     let authenticator_pubkey_y: [u8; 32] = [
-        251, 153, 138, 177, 148,  36, 118,
-        221, 122, 191, 153, 189, 200, 232,
-        219, 235, 190, 212, 132, 238, 209,
-        201, 114, 108, 114,  93, 189, 105,
-        58,  42,  36, 142
+        23, 208, 144, 212, 68, 219, 190, 41, 
+        188, 213, 104, 166, 100, 59, 6, 132, 
+        187, 190, 161, 233, 124, 20, 120, 59, 
+        61, 66, 198, 206, 63, 153, 103, 28
     ];
-    // 1. The authenticator signs the Poseidon2 hash of the item_serial.
-    // We use Poseidon2 here instead of SHA256 to avoid high circuit constraints,
-    // since the authenticator (mocked for hackathon) can just sign this hash.
-    let hashed_message_field = hash2(item_serial, 0);
-    let hashed_message: [u8; 32] = hashed_message_field.to_be_bytes();
     
-    // 2. Verify the authenticator's signature over the hashed serial
+    // 1. We use Keccak256 to hash the item_serial bytes.
+    // item_serial is passed as a Field. We convert it to bytes.
+    let item_serial_bytes: [u8; 32] = item_serial.to_be_bytes();
+    let hashed_message = keccak256(item_serial_bytes, 32);
+    
+    // 2. Verify the authenticator's signature over the Keccak256 hashed serial
     let is_valid = ecdsa_secp256k1::verify_signature(
         authenticator_pubkey_x,
         authenticator_pubkey_y,
@@ -39,7 +39,7 @@ fn main(
     );
     assert(is_valid == true, "Invalid authenticator signature");
 
-    // 3. Compute the genesis commitment
+    // 3. Compute the genesis commitment using Poseidon2 (cheaper for standard commitments)
     let genesis_commitment = hash2(item_serial, secret_nonce);
     
     genesis_commitment

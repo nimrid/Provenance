@@ -9,11 +9,15 @@ const execAsync = promisify(exec);
 
 export async function POST(request: Request) {
   try {
-    const { serialNumber, secret, authenticatorSignature } = await request.json();
+    const { serialNumber, secret } = await request.json();
 
-    if (!serialNumber || !secret || !authenticatorSignature) {
+    if (!serialNumber || !secret) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
+
+    // Retrieve the dynamic signature and Field hex representation from our mock NFC simulator
+    const { signSerialNumber } = await import('@/lib/manufacturer');
+    const { sigBytes, serialFieldHex } = await signSerialNumber(serialNumber);
 
     // 1. Create a temporary directory for this proving run
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'prove-genesis-'));
@@ -24,9 +28,9 @@ export async function POST(request: Request) {
     await execAsync(`cp -r ${sourceDir} ${circuitDir}`);
 
     // 3. Write the Prover.toml
-    const tomlContent = `item_serial = "${serialNumber}"
+    const tomlContent = `item_serial = "${serialFieldHex}"
 secret_nonce = "${secret}"
-authenticator_signature = [${authenticatorSignature.join(', ')}]
+authenticator_signature = [${Array.from(sigBytes).join(', ')}]
 `;
     await fs.writeFile(path.join(circuitDir, 'Prover.toml'), tomlContent);
 

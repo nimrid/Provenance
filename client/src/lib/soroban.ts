@@ -2,7 +2,7 @@ import { rpc, xdr, Networks, Contract, Address } from '@stellar/stellar-sdk';
 import { StellarWalletsKit, WalletNetwork, allowAllModules } from '@creit.tech/stellar-wallets-kit';
 
 // Setup Testnet RPC
-export const server = new rpc.Server("https://soroban-testnet.stellar.org:443");
+export const server = new rpc.Server("http://localhost:8000", { allowHttp: true });
 export const networkPassphrase = Networks.TESTNET;
 export const CONTRACT_ID = process.env.NEXT_PUBLIC_PROVENANCE_CONTRACT_ID!;
 
@@ -75,7 +75,7 @@ export async function signAndSubmitTransaction(contractCallOp: xdr.Operation, pu
     
     // Wait for confirmation using raw JSON-RPC to avoid XDR parsing errors (Bad union switch) on new Protocol versions
     let getTxStatus = async () => {
-        const res = await fetch("https://soroban-testnet.stellar.org:443", {
+        const res = await fetch("http://localhost:8000", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -99,7 +99,7 @@ export async function signAndSubmitTransaction(contractCallOp: xdr.Operation, pu
         throw new Error("Transaction execution failed on chain: " + JSON.stringify(statusResult.resultXdr));
     }
     
-    return statusResult;
+    return { ...statusResult, hash: sendResponse.hash };
 }
 
 /**

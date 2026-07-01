@@ -1,0 +1,21 @@
+***************
+*** 73,81 ****
+          }
+  
+          let vk_bytes: Bytes = env.storage().instance().get(&DataKey::VkGenesis).ok_or(Error::VkNotSet)?;
+-         let verifier = UltraHonkVerifier::new(&env, &vk_bytes).unwrap();
+          
+          let public_inputs = Bytes::from_array(&env, &genesis_commitment.to_array());
+          
+-         verifier.verify(&env, &proof, &public_inputs).map_err(|_| Error::VerificationFailed)?;
+          
+--- 87,95 ----
+          }
+  
+          let vk_bytes: Bytes = env.storage().instance().get(&DataKey::VkGenesis).ok_or(Error::VkNotSet)?;
++         let verifier = UltraHonkVerifier::new(&env, &vk_bytes).map_err(|_| Error::VerificationFailed)?;
+          
+          let public_inputs = Bytes::from_array(&env, &genesis_commitment.to_array());
+          
++         verifier.verify(&env, &proof, &public_inputs).map_err(|_| Error::VerificationFailed)?;
+          
