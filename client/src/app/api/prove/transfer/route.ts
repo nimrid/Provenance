@@ -8,6 +8,7 @@ import os from 'os';
 const execAsync = promisify(exec);
 
 export async function POST(request: Request) {
+  let tmpDir: string | null = null;
   try {
     const { serialNumber, oldSecret, newSecret } = await request.json();
 
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
     };
 
     // 1. Create a temporary directory
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'prove-transfer-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'prove-transfer-'));
     
     // --- STEP A: Compute Hashes using Noir ---
     const hashCircuitDir = path.join(tmpDir, 'hash_transfer');
@@ -72,8 +73,7 @@ nullifier = "${nullifier}"
     const actualProofBuffer = proofBuffer;
     const proofHex = '0x' + actualProofBuffer.toString('hex');
 
-    // Cleanup temp dir
-    fs.rm(tmpDir, { recursive: true, force: true }).catch(console.error);
+    // Cleanup temp dir happens in finally block
 
     return NextResponse.json({
       oldCommitment,
@@ -83,10 +83,14 @@ nullifier = "${nullifier}"
     });
 
   } catch (error: any) {
-    console.error('Proving error:', error);
+    console.error('Proving error:', error.message || error);
     return NextResponse.json(
       { error: 'Proof generation failed', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (tmpDir) {
+      fs.rm(tmpDir, { recursive: true, force: true }).catch(console.error);
+    }
   }
 }

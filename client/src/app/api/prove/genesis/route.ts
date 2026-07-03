@@ -8,6 +8,7 @@ import os from 'os';
 const execAsync = promisify(exec);
 
 export async function POST(request: Request) {
+  let tmpDir: string | null = null;
   try {
     const { serialNumber, secret } = await request.json();
 
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
     const { sigBytes, serialFieldHex } = await signSerialNumber(serialNumber);
 
     // 1. Create a temporary directory for this proving run
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'prove-genesis-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'prove-genesis-'));
     const circuitDir = path.join(tmpDir, 'genesis');
 
     // 2. Copy the genesis circuit to the temporary directory
@@ -62,8 +63,7 @@ authenticator_signature = [${Array.from(sigBytes).join(', ')}]
     const actualProofBuffer = proofBuffer;
     const proofHex = '0x' + actualProofBuffer.toString('hex');
 
-    // Cleanup temp dir asynchronously (fire and forget)
-    fs.rm(tmpDir, { recursive: true, force: true }).catch(console.error);
+    // Cleanup temp dir happens in finally block
 
     return NextResponse.json({
       commitment: commitmentHex,
@@ -71,10 +71,14 @@ authenticator_signature = [${Array.from(sigBytes).join(', ')}]
     });
 
   } catch (error: any) {
-    console.error('Proving error:', error);
+    console.error('Proving error:', error.message || error);
     return NextResponse.json(
       { error: 'Proof generation failed', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (tmpDir) {
+      fs.rm(tmpDir, { recursive: true, force: true }).catch(console.error);
+    }
   }
 }

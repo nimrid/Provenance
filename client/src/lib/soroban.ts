@@ -24,15 +24,22 @@ export function getStellarWalletsKit() {
  */
 export async function connectWallet(): Promise<string> {
     const kit = getStellarWalletsKit();
-    // Opens a modal for the user to select their wallet and approve connection
-    await kit.openModal({
-        onWalletSelected: async (option) => {
-            kit.setWallet(option.id);
-        }
+    return new Promise((resolve, reject) => {
+        kit.openModal({
+            onWalletSelected: async (option) => {
+                try {
+                    kit.setWallet(option.id);
+                    const { address } = await kit.getAddress();
+                    resolve(address);
+                } catch (e) {
+                    reject(e);
+                }
+            },
+            onClosed: (err) => {
+                reject(err || new Error("Wallet connection was cancelled by the user."));
+            }
+        });
     });
-    
-    const { address } = await kit.getAddress();
-    return address;
 }
 
 /**

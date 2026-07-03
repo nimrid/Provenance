@@ -8,6 +8,7 @@ import os from 'os';
 const execAsync = promisify(exec);
 
 export async function POST(request: Request) {
+  let tmpDir: string | null = null;
   try {
     const { serialNumber, secret } = await request.json();
 
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
         PATH: `${os.homedir()}/.nargo/bin:${os.homedir()}/.bb/bin:${process.env.PATH || ''}` 
     };
 
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'prove-stolen-'));
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'prove-stolen-'));
     
     // --- STEP A: Compute Hash (commitment) using a simple Node.js script or the genesis hash circuit ---
     // Actually, we can just run the report_stolen circuit directly! BUT we need the commitment as public input.
@@ -67,8 +68,7 @@ commitment = "${commitment}"
     const actualProofBuffer = proofBuffer;
     const proofHex = '0x' + actualProofBuffer.toString('hex');
 
-    // Cleanup temp dir
-    fs.rm(tmpDir, { recursive: true, force: true }).catch(console.error);
+    // Cleanup temp dir happens in finally block
 
     return NextResponse.json({
       commitment,
@@ -76,10 +76,14 @@ commitment = "${commitment}"
     });
 
   } catch (error: any) {
-    console.error('Proving error:', error);
+    console.error('Proving error:', error.message || error);
     return NextResponse.json(
       { error: 'Proof generation failed', details: error.message },
       { status: 500 }
     );
+  } finally {
+    if (tmpDir) {
+      fs.rm(tmpDir, { recursive: true, force: true }).catch(console.error);
+    }
   }
 }
